@@ -1,0 +1,13 @@
+[package]
+name = "Hackasaurus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+device_query = "2.1.0"
+glium = "0.36.0"
+glutin = "0.32.2"
+lazy_static = "1.5.0"
+libm = "0.2.11"
+proc_mem = "0.1.6"
+winit = "0.30.8"
