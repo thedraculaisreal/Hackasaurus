@@ -1,7 +1,45 @@
 use crate::offsets;
-use proc_mem::{Process, Module};
+use rustbot::Vec3;
 use std::thread;
 use std::time::Duration;
+
+// global variables for accessing from other threads
+pub static mut PLAYER_LIST: Vec<Player> = Vec::new();
+pub static mut LOCAL_PLAYER: LocalPlayer = LocalPlayer {
+    health: 0,
+    head_pos: Vec3::new_const(0.0,0.0,0.0),
+    view_angles: Vec3::new_const(0.0,0.0,0.0),
+};
+
+#[derive(Default , Clone)]
+struct LocalPlayer {
+    pub health: u8,
+    pub head_pos: Vec3,
+    pub view_angles: Vec3,
+}
+
+#[derive(Default , Clone)]
+struct Player {
+    pub health: u8,
+    pub feet_pos: Vec3,
+    pub head_pos: Vec3,
+}
+
+impl Player {
+    pub fn new(address: usize, game: &proc_mem::Process) -> Self {
+	let health: u8 = game.read_mem::<u8>(address + offsets::player_pawn::HEALTH)
+	    .expect("failed to read health");
+	let feet_pos: Vec3 = game.read_mem::<Vec3>(address + offsets::player_pawn::FEET_POS)
+	    .expect("Faled to read feet_pos");
+	let head_pos: Vec3 = game.read_mem::<Vec3>(address + offsets::player_pawn::HEAD_POS)
+	    .expect("Failed to read health_pos");
+	Self {
+	    health,
+	    feet_pos,
+	    head_pos,
+	}
+    }
+}
 
 pub fn entity_list_loop(client: proc_mem::Module, server: proc_mem::Module, game: proc_mem::Process) {
     loop {
@@ -9,6 +47,7 @@ pub fn entity_list_loop(client: proc_mem::Module, server: proc_mem::Module, game
 	    .expect("failed to read entity_list address");
 	let player_count = game.read_mem::<i32>(server.base_address() + offsets::PLAYER_COUNT)
 	    .expect("failed to read player_count");
+	// start at 1 so we dont read local_player values;
 	let mut player_index: i32 = 1;
 	while player_index <= player_count {
 	    let list_entry = game.read_mem::<usize>(entity_list + (((8 * (player_index & 0x7FFF) >> 9) + 16) as usize))
@@ -21,10 +60,8 @@ pub fn entity_list_loop(client: proc_mem::Module, server: proc_mem::Module, game
 		.expect("failed to read list entity");
 	    let pawn_addr = game.read_mem::<usize>(list_entity + ((120 * (player_pawn & 0x1FF)) as usize))
 		.expect("failed to read pawn_addr");
-	    let pawn_health = game.read_mem::<i32>(pawn_addr + offsets::PAWN_HEALTH)
-		.expect("failed to read pawn_health");
-	    println!("{}", pawn_health);
-	    thread::sleep(Duration::from_millis(1000));
+	    let player = Player::new(pawn_addr, &game);
+	    thread::sleep(Duration::from_millis(1));
 	    player_index += 1;
 	}
     }
