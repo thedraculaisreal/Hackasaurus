@@ -39,24 +39,37 @@ pub struct Player {
     pub health: u8,
     pub feet_pos: Vec3,
     pub head_pos: Vec3,
+    pub name: String,
 }
 
 impl Player {
-    pub fn new(address: usize, game: &proc_mem::Process) -> Self {
+    pub fn new(address: usize, entity_controller: usize , game: &proc_mem::Process) -> Self {
 	let health: u8 = game.read_mem::<u8>(address + offsets::player_pawn::HEALTH)
 	    .expect("failed to read health");
 	let feet_pos: Vec3 = game.read_mem::<Vec3>(address + offsets::player_pawn::FEET_POS)
 	    .expect("Faled to read feet_pos");
 	let head_pos: Vec3 = game.read_mem::<Vec3>(address + offsets::player_pawn::HEAD_POS)
 	    .expect("Failed to read health_pos");
+	let name = Self::read_name(entity_controller, game);
 	Self {
 	    health,
 	    feet_pos,
 	    head_pos,
+	    name,
 	}
     }
+    fn read_name(address: usize, game: &proc_mem::Process) -> String {
+        let rsize = 8;
+        let mut bytes_buffer: Vec<u8> = vec![0u8;rsize];
+        game.read_bytes(address + offsets::player_pawn::NAME, bytes_buffer.as_mut_ptr(), rsize);
+        let mut name = String::new();
+        for byte in bytes_buffer {
+            name.push(byte as u8 as char);
+        }
+        return name
+    }
     pub fn print_values(&self) {
-        println!("{}", self.health);
+        println!("{}, {}", self.health, self.name);
         println!("{}, {}, {} ", self.feet_pos.x, self.feet_pos.y, self.feet_pos.z);
     }
 }
@@ -72,12 +85,11 @@ pub fn entity_list_loop(client: proc_mem::Module, server: proc_mem::Module, game
 		.expect("failed to read entity_list address");
 	    let player_count = game.read_mem::<i32>(server.base_address() + offsets::PLAYER_COUNT)
 		.expect("failed to read player_count");
-	    // start at 1 so we dont read local_player values;
-	    let mut player_index: i32 = 1;
-	    while player_index <= player_count {
-		let list_entry = game.read_mem::<usize>(entity_list + (((8 * (player_index & 0x7FFF) >> 9) + 16) as usize))
+	    // start at 2 so we dont read local_player values;
+	    for i in 2..=player_count {
+		let list_entry = game.read_mem::<usize>(entity_list + (((8 * (i & 0x7FFF) >> 9) + 16) as usize))
 		    .expect("failed to read list_entry");
-		let entity_controller = game.read_mem::<usize>(list_entry + ((120 * (player_index & 0x1FF)) as usize))
+		let entity_controller = game.read_mem::<usize>(list_entry + ((120 * (i & 0x1FF)) as usize))
 		    .expect("failed to read entity_controller");
 		let player_pawn = game.read_mem::<u32>(entity_controller + offsets::PLAYER_PAWN)
 		    .expect("failed to read player_pawn");
@@ -85,10 +97,9 @@ pub fn entity_list_loop(client: proc_mem::Module, server: proc_mem::Module, game
 		    .expect("failed to read list entity");
 		let pawn_addr = game.read_mem::<usize>(list_entity + ((120 * (player_pawn & 0x1FF)) as usize))
 		    .expect("failed to read pawn_addr");
-		let player = Player::new(pawn_addr, &game);
+		let player = Player::new(pawn_addr, entity_controller, &game);
 		PLAYER_LIST.push(player);
 		thread::sleep(Duration::from_millis(1));
-		player_index += 1;
 	    }
 	}
     }
